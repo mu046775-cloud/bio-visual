@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>BioVisual Studio Enterprise - Professional Molecular Renderer</title>
+    <!-- 引入专业字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-darker: #050505;
+            --bg-panel: #161616;
+            --bg-hover: #2a2a2a;
+            --accent: #0078d4;
+            --text-primary: #e0e0e0;
+            --text-secondary: #999;
+            --border: #333;
+            --header-h: 38px;
+            --footer-h: 28px;
+            --side-w: 260px;
+        }
+
+        * { box-sizing: border-box; outline: none; }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: var(--bg-darker); color: var(--text-primary);
+            font-family: 'Inter', -apple-system, sans-serif; overflow: hidden;
+        }
+
+        /* --- 栅格布局 --- */
+        .app-shell {
+            display: grid;
+            grid-template-areas: 
+                "nav nav nav"
+                "left view right"
+                "foot foot foot";
+            grid-template-columns: var(--side-w) 1fr var(--side-w);
+            grid-template-rows: var(--header-h) 1fr var(--footer-h);
+            height: 100vh;
+        }
+
+        /* --- 导航栏 --- */
+        header {
+            grid-area: nav;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; padding: 0 12px;
+            gap: 20px; z-index: 1000;
+        }
+        .logo { font-weight: 700; color: var(--accent); letter-spacing: -0.5px; font-size: 14px; }
+        .nav-item { font-size: 12px; color: var(--text-secondary); cursor: pointer; transition: 0.2s; }
+        .nav-item:hover { color: white; }
+
+        /* --- 左侧分子结构树 --- */
+        .left-aside {
+            grid-area: left;
+            background: var(--bg-panel);
+            border-right: 1px solid var(--border);
+            padding: 15px;
+            display: flex; flex-direction: column; gap: 20px;
+        }
+        .section-label { font-size: 10px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+        .info-box { background: #000; border: 1px solid var(--border); padding: 10px; border-radius: 4px; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 11px; }
+        .info-row span:first-child { color: var(--text-secondary); }
+
+        /* --- 3D 视图区 --- */
+        main {
+            grid-area: view;
+            position: relative;
+            background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
+        }
+        #canvas-container { width: 100%; height: 100%; }
+        .view-label { position: absolute; top: 15px; left: 15px; pointer-events: none; font-family: 'JetBrains Mono'; font-size: 12px; opacity: 0.6; }
+
+        /* --- 右侧控制面板 --- */
+        .right-aside {
+            grid-area: right;
+            background: var(--bg-panel);
+            border-left: 1px solid var(--border);
+            display: flex; flex-direction: column; overflow-y: auto;
+        }
+        .manager-list { padding: 8px; flex: 1; }
+        .obj-item { 
+            background: #202020; border: 1px solid var(--border); border-radius: 3px;
+            padding: 6px 10px; margin-bottom: 5px; display: flex; align-items: center; justify-content: space-between;
+        }
+        .obj-name { font-family: 'JetBrains Mono'; font-size: 11px; color: #bbb; }
+        .btn-group { display: flex; gap: 2px; }
+        .control-btn { 
+            width: 20px; height: 18px; background: #333; color: #fff; 
+            font-size: 9px; display: grid; place-items: center; cursor: pointer; border-radius: 2px;
+        }
+        .control-btn:hover { background: var(--accent); }
+        .control-btn.active { background: var(--accent); }
+
+        /* --- 底部状态栏 --- */
+        footer {
+            grid-area: foot;
+            background: var(--accent);
+            color: white;
+            display: flex; align-items: center; padding: 0 15px;
+            font-family: 'JetBrains Mono', monospace; font-size: 11px;
+        }
+        .status-gap { margin-left: auto; display: flex; gap: 20px; }
+
+        /* lil-gui 自定义样式覆盖 */
+        .lil-gui { --background-color: transparent; --width: 100%; }
+        .lil-gui.root { border: none; }
+        #gui-container { padding: 10px; border-top: 1px solid var(--border); }
+    </style>
+</head>
+<body>
+
+<div class="app-shell">
+    <header>
+        <div class="logo">BIO-VISUAL ENTERPRISE</div>
+        <div class="nav-item">File</div>
+        <div class="nav-item">Build</div>
+        <div class="nav-item">Select</div>
+        <div class="nav-item">Analysis</div>
+        <div class="nav-item">Render</div>
+    </header>
+
+    <!-- 左侧信息区 -->
+    <aside class="left-aside">
+        <div>
+            <div class="section-label">Molecule Info</div>
+            <div class="info-box">
+                <div class="info-row"><span>PDB ID</span><span>4HHB</span></div>
+                <div class="info-row"><span>Name</span><span>Hemoglobin</span></div>
+                <div class="info-row"><span>Source</span><span>Human</span></div>
+                <div class="info-row"><span>Atoms</span><span id="atom-count">0</span></div>
+            </div>
+        </div>
+        <div>
+            <div class="section-label">Hierarchy Explorer</div>
+            <div style="font-size: 12px; margin-top: 10px; color: #888;">
+                <div style="padding: 4px 0;">▼ Molecule</div>
+                <div style="padding: 4px 15px; color: #4caf50;">● Chain A (Alpha)</div>
+                <div style="padding: 4px 15px; color: #00bcd4;">● Chain B (Beta)</div>
+                <div style="padding: 4px 15px; color: #ff9800;">● Heme Group</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 3D 视口 -->
+    <main>
+        <div class="view-label">PERSPECTIVE VIEW / OpenGL Core</div>
+        <div id="canvas-container"></div>
+    </main>
+
+    <!-- 右侧工具栏 -->
+    <aside class="right-aside">
+        <div style="padding: 12px 12px 4px 12px;" class="section-label">Object Manager</div>
+        <div class="manager-list">
+            <!-- 场景控制 -->
+            <div class="obj-item">
+                <span class="obj-name">all</span>
+                <div class="btn-group">
+                    <div class="control-btn" onclick="actions.focus('all')">A</div>
+                    <div class="control-btn active" id="btn-show-all" onclick="actions.toggleVisible('all', true)">S</div>
+                    <div class="control-btn" id="btn-hide-all" onclick="actions.toggleVisible('all', false)">H</div>
+                </div>
+            </div>
+            <!-- 链 A 控制 -->
+            <div class="obj-item">
+                <span class="obj-name">chain_A</span>
+                <div class="btn-group">
+                    <div class="control-btn" onclick="actions.focus('A')">A</div>
+                    <div class="control-btn active" id="btn-show-A" onclick="actions.toggleVisible('A', true)">S</div>
+                    <div class="control-btn" id="btn-hide-A" onclick="actions.toggleVisible('A', false)">H</div>
+                </div>
+            </div>
+            <!-- 链 B 控制 -->
+            <div class="obj-item">
+                <span class="obj-name">chain_B</span>
+                <div class="btn-group">
+                    <div class="control-btn" onclick="actions.focus('B')">A</div>
+                    <div class="control-btn active" id="btn-show-B" onclick="actions.toggleVisible('B', true)">S</div>
+                    <div class="control-btn" id="btn-hide-B" onclick="actions.toggleVisible('B', false)">H</div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="padding: 0 12px 4px 12px;" class="section-label">Display Parameters</div>
+        <div id="gui-container"></div>
+    </aside>
+
+    <!-- 底部状态栏 -->
+    <footer>
+        <div id="inspect-panel">READY | Raycaster Active</div>
+        <div class="status-gap">
+            <div id="cam-pos">CAM: [0.0, 0.0, 0.0]</div>
+            <div id="fps-counter">FPS: 60</div>
+            <div style="color: #000; font-weight: bold;">CONNECTED</div>
+        </div>
+    </footer>
+</div>
+
+<!-- 脚本：Three.js 核心逻辑 -->
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+            "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import GUI from 'lil-gui';
+
+    // --- 配置与模拟数据 ---
+    const CONFIG = {
+        atomTypes: {
+            'C': { color: 0x909090, radius: 0.7 },
+            'O': { color: 0xff0d0d, radius: 0.6 },
+            'N': { color: 0x3050f8, radius: 0.65 },
+            'S': { color: 0xffff30, radius: 0.8 },
+            'Fe': { color: 0xff8000, radius: 1.0 }
+        },
+        chains: {
+            'A': { color: 0x4caf50 },
+            'B': { color: 0x00bcd4 }
+        }
+    };
+
+    // --- 全局变量 ---
+    let scene, camera, renderer, controls, raycaster, mouse;
+    let chainAGroup, chainBGroup, allGroups;
+    let currentAtomScale = 1.0;
+    
+    const settings = {
+        style: 'Ball-and-Stick',
+        coloring: 'By Element',
+        metalness: 0.4,
+        roughness: 0.2,
+        autoRotate: true,
+        showBonds: true,
+        bloom: true
+    };
+
+    // --- 初始化 ---
+    init();
+    renderLoop();
+
+    function init() {
+        // 1. 基础环境
+        scene = new THREE.Scene();
+        const container = document.getElementById('canvas-container');
+        
+        camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(40, 30, 40);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        container.appendChild(renderer.domElement);
+
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = settings.autoRotate;
+
+        // 2. 光照系统
+        const ambLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambLight);
+
+        const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight1.position.set(20, 40, 20);
+        scene.add(dirLight1);
+
+        const dirLight2 = new THREE.PointLight(0x0078d4, 1);
+        dirLight2.position.set(-20, -20, -20);
+        scene.add(dirLight2);
+
+        // 3. 核心对象组
+        chainAGroup = new THREE.Group();
+        chainBGroup = new THREE.Group();
+        allGroups = new THREE.Group();
+        allGroups.add(chainAGroup, chainBGroup);
+        scene.add(allGroups);
+
+        // 4. 构建模拟分子
+        generateFakeProtein('A', chainAGroup, -10);
+        generateFakeProtein('B', chainBGroup, 10);
+        document.getElementById('atom-count').innerText = (chainAGroup.children.length + chainBGroup.children.length);
+
+        // 5. 交互
+        raycaster = new THREE.Raycaster();
+        mouse = new THREE.Vector2();
+        window.addEventListener('mousedown', onSelect);
+        window.addEventListener('resize', onResize);
+
+        // 6. 控制面板
+        setupGUI();
+    }
+
+    // --- 分子生成引擎 ---
+    function generateFakeProtein(chainId, group, offsetZ) {
+        const types = Object.keys(CONFIG.atomTypes);
+        const count = 60;
+        const positions = [];
+
+        for (let i = 0; i < count; i++) {
+            const typeKey = types[Math.floor(Math.random() * types.length)];
+            const typeInfo = CONFIG.atomTypes[typeKey];
+            
+            // 螺旋结构模拟
+            const angle = i * 0.4;
+            const x = Math.cos(angle) * 8 + (Math.random() - 0.5) * 2;
+            const y = i * 0.5 - 15;
+            const z = Math.sin(angle) * 8 + offsetZ;
+            const pos = new THREE.Vector3(x, y, z);
+            positions.push(pos);
+
+            // 创建原子 Mesh
+            const geom = new THREE.SphereGeometry(typeInfo.radius, 24, 24);
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: settings.coloring === 'By Element' ? typeInfo.color : CONFIG.chains[chainId].color,
+                metalness: settings.metalness,
+                roughness: settings.roughness
+            });
+            
+            const atom = new THREE.Mesh(geom, mat);
+            atom.position.copy(pos);
+            
+            // 注入数据用于拾取
+            atom.userData = {
+                id: i + (chainId === 'A' ? 0 : 1000),
+                element: typeKey,
+                chain: chainId,
+                baseColor: typeInfo.color
+            };
+
+            group.add(atom);
+
+            // 创建键 (Bonds)
+            if (i > 0) {
+                createBond(positions[i-1], pos, group);
+            }
+        }
+    }
+
+    function createBond(start, end, group) {
+        const vec = new THREE.Vector3().subVectors(end, start);
+        const len = vec.length();
+        const geom = new THREE.CylinderGeometry(0.15, 0.15, len, 8);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+        const bond = new THREE.Mesh(geom, mat);
+
+        bond.position.copy(start).add(vec.clone().multiplyScalar(0.5));
+        bond.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vec.clone().normalize());
+        bond.userData.isBond = true;
+        group.add(bond);
+    }
+
+    // --- UI 响应函数 ---
+    function setupGUI() {
+        const gui = new GUI({ container: document.getElementById('gui-container'), title: '' });
+        
+        gui.add(settings, 'style', ['Ball-and-Stick', 'Space-filling', 'Lines']).name('Display Style').onChange(updateDisplay);
+        
+        gui.add(settings, 'coloring', ['By Element', 'By Chain']).name('Color Scheme').onChange(updateColoring);
+
+        const matFolder = gui.addFolder('Material Performance');
+        matFolder.add(settings, 'metalness', 0, 1).step(0.01).onChange(v => {
+            allGroups.traverse(obj => { if(obj.isMesh) obj.material.metalness = v; });
+        });
+        matFolder.add(settings, 'roughness', 0, 1).step(0.01).onChange(v => {
+            allGroups.traverse(obj => { if(obj.isMesh) obj.material.roughness = v; });
+        });
+
+        gui.add(settings, 'autoRotate').name('Rotation').onChange(v => controls.autoRotate = v);
+        gui.add(settings, 'showBonds').name('Render Bonds').onChange(v => {
+            allGroups.traverse(obj => { if(obj.userData.isBond) obj.visible = v; });
+        });
+    }
+
+    function updateDisplay() {
+        allGroups.traverse(obj => {
+            if (obj.isMesh && !obj.userData.isBond) {
+                if (settings.style === 'Space-filling') {
+                    obj.scale.setScalar(2.2);
+                } else if (settings.style === 'Lines') {
+                    obj.scale.setScalar(0.2);
+                } else {
+                    obj.scale.setScalar(1.0);
+                }
+            }
+            if (obj.userData.isBond) {
+                obj.visible = (settings.style !== 'Space-filling' && settings.showBonds);
+            }
+        });
+    }
+
+    function updateColoring() {
+        allGroups.traverse(obj => {
+            if (obj.isMesh && !obj.userData.isBond) {
+                const chain = obj.userData.chain;
+                const elementColor = obj.userData.baseColor;
+                obj.material.color.set(settings.coloring === 'By Element' ? elementColor : CONFIG.chains[chain].color);
+            }
+        });
+    }
+
+    // --- 公开 API ---
+    window.actions = {
+        toggleVisible: (target, visible) => {
+            const grp = target === 'all' ? allGroups : (target === 'A' ? chainAGroup : chainBGroup);
+            grp.visible = visible;
+            // 更新 UI 状态
+            document.getElementById(`btn-show-${target}`).classList.toggle('active', visible);
+            document.getElementById(`btn-hide-${target}`).classList.toggle('active', !visible);
+        },
+        focus: (target) => {
+            const grp = target === 'all' ? allGroups : (target === 'A' ? chainAGroup : chainBGroup);
+            const box = new THREE.Box3().setFromObject(grp);
+            const center = box.getCenter(new THREE.Vector3());
+            controls.target.copy(center);
+            camera.position.set(center.x + 30, center.y + 20, center.z + 30);
+        }
+    };
+
+    // --- 事件监听 ---
+    function onSelect(event) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(allGroups.children, true);
+
+        if (intersects.length > 0) {
+            const obj = intersects[0].object;
+            if (obj.userData.isBond) return;
+            
+            const d = obj.userData;
+            document.getElementById('inspect-panel').innerHTML = 
+                `<span style="color:#ff0">SELECTED:</span> Chain ${d.chain} | Atom ${d.element} (#${d.id}) | X:${obj.position.x.toFixed(2)} Y:${obj.position.y.toFixed(2)}`;
+            
+            // 点击高亮效果
+            obj.material.emissive.setHex(0x333333);
+            setTimeout(() => obj.material.emissive.setHex(0x000000), 500);
+        }
+    }
+
+    function onResize() {
+        const container = document.getElementById('canvas-container');
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
+    function renderLoop() {
+        requestAnimationFrame(renderLoop);
+        controls.update();
+        renderer.render(scene, camera);
+
+        // 更新状态栏
+        const pos = camera.position;
+        document.getElementById('cam-pos').innerText = `CAM: [${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}]`;
+    }
+</script>
+
+</body>
+</html>
